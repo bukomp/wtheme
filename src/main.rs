@@ -31,10 +31,7 @@ fn run(cli: Cli) -> Result<()> {
     use windows_registry::CURRENT_USER;
 
     let key = CURRENT_USER
-        .options()
-        .read()
-        .write()
-        .open(platform::SUBKEY)
+        .create(platform::SUBKEY)
         .with_context(|| format!("opening HKCU\\{}", platform::SUBKEY))?;
     let (apps, sys) = platform::read_mode(&key)?;
 
