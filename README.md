@@ -37,7 +37,6 @@ Flags (any subcommand):
 
 - `--apps-only`     only change the apps theme
 - `--system-only`   only change the shell theme (taskbar / Start)
-- `--no-broadcast`  skip the live-refresh broadcast
 
 ## How it works
 

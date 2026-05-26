@@ -19,10 +19,6 @@ struct Cli {
     // Only touch the shell theme value (taskbar / Start).
     #[arg(long, global = true)]
     system_only: bool,
-
-    // Skip the WM_SETTINGCHANGE broadcast (keys still get written; running apps just won't repaint live).
-    #[arg(long, global = true)]
-    no_broadcast: bool,
 }
 
 // The four supported actions.
@@ -98,8 +94,16 @@ fn run(_cli: Cli) -> Result<()> {
 // Windows entry point: open the key once, then dispatch by subcommand.
 #[cfg(target_os = "windows")]
 fn run(cli: Cli) -> Result<()> {
+    use anyhow::Context;
+    use windows_registry::CURRENT_USER;
+
     // Open HKCU\...\Personalize with read+write access (no admin needed).
-    let key = platform::open_personalize()?;
+    let key = CURRENT_USER
+        .options()
+        .read()
+        .write()
+        .open(platform::SUBKEY)
+        .with_context(|| format!("opening HKCU\\{}", platform::SUBKEY))?;
     // Snapshot the current theme so `status` and `toggle` can both use it.
     let (apps, sys) = platform::read_mode(&key)?;
 
@@ -145,10 +149,8 @@ fn apply_change(cli: &Cli, key: &windows_registry::Key, cur_apps: Mode, cur_sys:
     // Write whichever values are still Some(..).
     platform::write_mode(key, apps_to_write, sys_to_write)?;
 
-    // Tell running apps to repaint. Skipped when the user passed --no-broadcast.
-    if !cli.no_broadcast {
-        platform::broadcast_setting_change()?;
-    }
+    // Tell running apps to repaint immediately.
+    platform::broadcast_setting_change()?;
 
     // Re-read so the printed state reflects what actually got written.
     let (apps, sys) = platform::read_mode(key)?;
@@ -167,10 +169,8 @@ mod platform {
         SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE,
     };
     pub use windows_registry::Key;
-    use windows_registry::CURRENT_USER;
-
     // Documented path under HKCU that holds the user's light/dark preference.
-    const SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+    pub const SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
     // DWORD value name controlling the per-app theme (Settings, Explorer chrome, etc.).
     const APPS: &str = "AppsUseLightTheme";
     // DWORD value name controlling the shell theme (taskbar, Start, notification flyouts).
@@ -179,16 +179,6 @@ mod platform {
     const BROADCAST_TIMEOUT_MS: u32 = 1000;
     // Null-terminated UTF-16 string passed as lParam to identify the changed setting.
     const IMMERSIVE_COLOR_SET: &str = "ImmersiveColorSet\0";
-
-    // Open the Personalize subkey with read+write rights. HKCU never needs elevation.
-    pub fn open_personalize() -> Result<Key> {
-        CURRENT_USER
-            .options()
-            .read()
-            .write()
-            .open(SUBKEY)
-            .with_context(|| format!("opening HKCU\\{SUBKEY}"))
-    }
 
     // Read both DWORDs and return them as decoded Modes.
     pub fn read_mode(key: &Key) -> Result<(Mode, Mode)> {
