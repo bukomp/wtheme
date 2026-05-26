@@ -1,0 +1,63 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v0.1.0). Created if missing."
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable, MSVC)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo registry & target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir dist
+          cp target/x86_64-pc-windows-msvc/release/wtheme.exe dist/
+          cp README.md LICENSE dist/
+          cd dist
+          7z a "wtheme-${GITHUB_REF_NAME:-${{ inputs.tag }}}-x86_64-pc-windows-msvc.zip" wtheme.exe README.md LICENSE
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wtheme-windows
+          path: dist/*.zip
+
+  release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wtheme-windows
+          path: dist
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          files: dist/*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
