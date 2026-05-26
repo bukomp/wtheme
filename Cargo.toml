@@ -1,0 +1,27 @@
+[package]
+name = "wtheme"
+version = "0.1.0"
+edition = "2021"
+description = "Tiny CLI to switch Windows 11 between light and dark mode"
+license = "MIT"
+repository = "https://github.com/bukomp/windows_theme_changer_CLI"
+
+[[bin]]
+name = "wtheme"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-registry = "0.2"
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
